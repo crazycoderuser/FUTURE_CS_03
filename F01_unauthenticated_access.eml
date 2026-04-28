@@ -1,0 +1,108 @@
+From: crazycoder.security@gmail.com
+To: dev-team@yourcompany.com
+CC: security-lead@yourcompany.com
+Subject: [SECURITY FINDING F-01] CRITICAL — Unauthenticated Access to User Data | JSONPlaceholder API
+Date: Mon, 27 Apr 2026 10:00:00 +0530
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+==============================================================
+  SECURITY FINDING NOTIFICATION  |  F-01  |  CRITICAL
+==============================================================
+
+Finding ID    : F-01
+Severity      : CRITICAL
+OWASP Ref     : API2:2023 — Broken Authentication
+API Tested    : JSONPlaceholder (https://jsonplaceholder.typicode.com)
+Endpoint      : GET /users
+Date Discovered: Mon, 27 Apr 2026
+Analyst       : CrazyCoder
+
+--------------------------------------------------------------
+DESCRIPTION
+--------------------------------------------------------------
+
+The /users endpoint returns the complete user dataset — including full
+names, email addresses, physical addresses, geographic coordinates, phone
+numbers, and company metadata — without requiring any authentication.
+
+A GET request sent with NO Authorization header receives a 200 OK response
+containing all 10 user records. This is a complete authentication failure.
+
+--------------------------------------------------------------
+PROOF OF CONCEPT  (Evidence)
+--------------------------------------------------------------
+
+REQUEST SENT:
+  Method:  GET
+  URL:     https://jsonplaceholder.typicode.com/users
+  Headers: (none — zero Authorization header)
+
+RESPONSE RECEIVED:
+  Status:  HTTP/1.1 200 OK
+  Body:
+  [
+    {
+      "id": 1,
+      "name": "Leanne Graham",
+      "username": "Bret",
+      "email": "Sincere@april.biz",
+      "address": {
+        "street": "Kulas Light",
+        "city": "Gwenborough",
+        "geo": { "lat": "-37.3159", "lng": "81.1496" }
+      },
+      "phone": "1-770-736-8031 x56442",
+      "website": "hildegard.org",
+      "company": { "name": "Romaguera-Crowe" }
+    },
+    ... 9 additional full user records returned
+  ]
+
+EXPECTED: HTTP 401 Unauthorized
+ACTUAL:   HTTP 200 OK with complete PII dataset — CRITICAL FINDING
+
+--------------------------------------------------------------
+BUSINESS IMPACT
+--------------------------------------------------------------
+
+1. Any internet user can harvest all customer PII in one unauthenticated
+   request — names, emails, physical addresses, phone numbers, geo-coords.
+
+2. Under India's DPDP Act 2023, this constitutes a reportable personal data
+   breach. Mandatory notification and potential financial penalties apply.
+
+3. Harvested emails are directly usable for phishing and spam campaigns
+   targeting your customers.
+
+4. Geo-coordinates expose home or workplace locations — a direct personal
+   safety risk for your users.
+
+--------------------------------------------------------------
+REMEDIATION  (Priority: IMMEDIATE — fix before any production deployment)
+--------------------------------------------------------------
+
+Step 1: Add authentication middleware to all data-returning routes.
+        Return HTTP 401 Unauthorized when no valid credential is present.
+
+Step 2: FastAPI implementation example:
+        @app.get('/users')
+        async def get_users(token: str = Depends(verify_token)):
+            return user_service.get_all_users()
+
+Step 3: Audit every endpoint — confirm auth enforcement on all routes
+        that return sensitive data.
+
+Step 4: Write automated tests asserting 401 for unauthenticated calls
+        to prevent future regression.
+
+==============================================================
+NOTE: This finding was identified during a read-only assessment.
+No data was modified, exfiltrated, or shared outside this report.
+Please treat this communication as confidential.
+==============================================================
+
+Regards,
+CrazyCoder
+Security Analyst — Cybersecurity Internship, Task 3
+Shambhunath Institute of Engineering & Technology

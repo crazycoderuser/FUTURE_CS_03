@@ -1,0 +1,119 @@
+From: crazycoder.security@gmail.com
+To: dev-team@yourcompany.com
+CC: security-lead@yourcompany.com
+Subject: [SECURITY FINDING F-05] MEDIUM — Absent HTTP Security Response Headers | JSONPlaceholder & ReqRes
+Date: Mon, 27 Apr 2026 11:00:00 +0530
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+==============================================================
+  SECURITY FINDING NOTIFICATION  |  F-05  |  MEDIUM
+==============================================================
+
+Finding ID    : F-05
+Severity      : MEDIUM
+OWASP Ref     : API8:2023 — Security Misconfiguration
+APIs Tested   : JSONPlaceholder & ReqRes
+Endpoint      : All endpoints
+Date Discovered: Mon, 27 Apr 2026
+Analyst       : CrazyCoder
+
+--------------------------------------------------------------
+DESCRIPTION
+--------------------------------------------------------------
+
+A GET request was sent to the /users endpoint and all response headers
+were inspected. Five standard HTTP security headers — widely considered
+mandatory baseline hygiene for any web-facing API — were entirely absent
+from the response.
+
+These headers instruct browsers and HTTP clients how to handle the response
+safely, and their absence removes standard mitigations for MIME sniffing,
+clickjacking, protocol downgrade, caching of sensitive data, and XSS attacks.
+
+--------------------------------------------------------------
+PROOF OF CONCEPT  (Evidence)
+--------------------------------------------------------------
+
+REQUEST:
+  GET https://jsonplaceholder.typicode.com/users
+  Response: 200 OK
+
+FULL RESPONSE HEADER AUDIT:
+  +---------------------------------+-------------------+-------------------+
+  | Header                          | Expected Value    | Status            |
+  +---------------------------------+-------------------+-------------------+
+  | X-Content-Type-Options          | nosniff           | MISSING           |
+  | X-Frame-Options                 | DENY              | MISSING           |
+  | Strict-Transport-Security       | max-age=31536000  | MISSING           |
+  | Content-Security-Policy         | default-src 'self'| MISSING           |
+  | Cache-Control                   | no-store          | MISSING           |
+  +---------------------------------+-------------------+-------------------+
+
+HEADERS ACTUALLY PRESENT IN RESPONSE:
+  Content-Type: application/json; charset=utf-8
+  Date: Mon, 27 Apr 2026 04:30:00 GMT
+  Transfer-Encoding: chunked
+  (no security-related headers)
+
+RESULT: 5 of 5 required security headers absent — MEDIUM FINDING
+
+--------------------------------------------------------------
+BUSINESS IMPACT
+--------------------------------------------------------------
+
+1. X-Content-Type-Options missing: Browsers may perform MIME-type sniffing
+   and execute injected content as a different type than intended, enabling
+   content-injection attacks.
+
+2. X-Frame-Options missing: API responses can be embedded in malicious
+   iframes, enabling clickjacking attacks that trick users into performing
+   unintended account actions (e.g. fund transfers, data deletion).
+
+3. Strict-Transport-Security missing: Browsers may downgrade HTTPS
+   connections to HTTP on subsequent visits, allowing a network attacker
+   to intercept API traffic and steal session tokens.
+
+4. Cache-Control missing: Browsers and shared proxy servers may cache
+   API responses containing user PII, exposing sensitive data to subsequent
+   users on shared computers or public Wi-Fi exit nodes.
+
+5. Compliance: SOC 2, ISO 27001, and PCI DSS all explicitly require
+   the presence of HTTP security response headers.
+
+--------------------------------------------------------------
+REMEDIATION  (Priority: SHORT-TERM — fix within 30 days)
+--------------------------------------------------------------
+
+Step 1: Add all five headers at the web server configuration layer.
+        This is a single config change — no application code modification.
+
+        Nginx example (add to server {} or location {} block):
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'" always;
+        add_header Cache-Control "no-store, no-cache" always;
+
+Step 2: Validate header presence after deployment:
+        Use https://securityheaders.com — enter your API domain
+        and confirm all five headers show as green.
+
+Step 3: For APIs serving JSON only, use the restrictive CSP:
+        Content-Security-Policy: default-src 'none'
+        This is safe and complete for pure API responses.
+
+Step 4: Integrate header validation into CI/CD as a deployment gate.
+        Run `curl -I https://your-api.com/health` and assert all
+        five headers are present before allowing production deployment.
+
+==============================================================
+NOTE: This finding was identified during a read-only assessment.
+No data was modified, exfiltrated, or shared outside this report.
+Please treat this communication as confidential.
+==============================================================
+
+Regards,
+CrazyCoder
+Security Analyst — Cybersecurity Internship, Task 3
+Shambhunath Institute of Engineering & Technology

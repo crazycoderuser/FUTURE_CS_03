@@ -1,0 +1,121 @@
+From: crazycoder.security@gmail.com
+To: dev-team@yourcompany.com
+CC: security-lead@yourcompany.com
+Subject: [SECURITY FINDING F-06] LOW — Auth Token Not Enforced on User List Endpoint | ReqRes API
+Date: Mon, 27 Apr 2026 11:15:00 +0530
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+==============================================================
+  SECURITY FINDING NOTIFICATION  |  F-06  |  LOW
+==============================================================
+
+Finding ID    : F-06
+Severity      : LOW
+OWASP Ref     : API2:2023 — Broken Authentication
+API Tested    : ReqRes (https://reqres.in)
+Endpoint      : GET /api/users
+Date Discovered: Mon, 27 Apr 2026
+Analyst       : CrazyCoder
+
+--------------------------------------------------------------
+DESCRIPTION
+--------------------------------------------------------------
+
+The ReqRes API provides an authentication mechanism: a POST /api/login
+endpoint that accepts credentials and returns a Bearer token. However,
+the GET /api/users endpoint — which returns a paginated list of user
+records — accepts requests without that token and returns 200 OK with
+user data.
+
+The authentication step is cosmetic. The token is issued but never
+validated on downstream endpoints, making the entire auth mechanism
+non-functional for data protection.
+
+--------------------------------------------------------------
+PROOF OF CONCEPT  (Evidence)
+--------------------------------------------------------------
+
+STEP 1 — Obtain authentication token:
+  REQUEST:
+    POST https://reqres.in/api/login
+    Content-Type: application/json
+    Body: {
+      "email": "eve.holt@reqres.in",
+      "password": "cityslicka"
+    }
+  RESPONSE: 200 OK
+    { "token": "QpwL5tpe83ilfN2" }
+
+STEP 2 — Access user data WITHOUT using the token:
+  REQUEST:
+    GET https://reqres.in/api/users
+    Authorization: (none — no header sent)
+  RESPONSE: 200 OK
+    {
+      "page": 1,
+      "per_page": 6,
+      "total": 12,
+      "data": [
+        { "id": 1, "email": "george.bluth@reqres.in", "first_name": "George" },
+        { "id": 2, "email": "janet.weaver@reqres.in", "first_name": "Janet" },
+        ...
+      ]
+    }
+
+FINDING: Token from Step 1 was never required or checked in Step 2.
+         User data returned with zero credentials.
+
+EXPECTED: 401 Unauthorized when Authorization header is absent
+ACTUAL:   200 OK with full user list — LOW FINDING
+
+--------------------------------------------------------------
+BUSINESS IMPACT
+--------------------------------------------------------------
+
+1. The authentication mechanism provides a false sense of security.
+   Developers integrating with this API may believe data is protected
+   by the issued token — it is not.
+
+2. Token revocation has zero protective effect. Revoking a user's token
+   (on logout or account suspension) does not prevent access to /api/users.
+   A revoked token and no token produce identical results.
+
+3. The inconsistency is a maintenance hazard. Future developers may
+   replicate this pattern across new endpoints, normalizing unenforced auth.
+
+4. An unauthenticated external attacker can enumerate user records from
+   /api/users without ever obtaining a login token.
+
+--------------------------------------------------------------
+REMEDIATION  (Priority: PLANNED — fix within 90 days)
+--------------------------------------------------------------
+
+Step 1: Apply authentication middleware consistently to ALL routes that
+        return user data. No exceptions — if a route returns data, it
+        requires a valid token.
+
+Step 2: Perform a route-level audit. List every endpoint and annotate
+        whether it currently validates the token. Any gap = potential F-06.
+
+Step 3: FastAPI example — apply globally to all data routes:
+        router = APIRouter(dependencies=[Depends(verify_token)])
+
+        @router.get('/api/users')
+        async def list_users():
+            return user_service.get_all()
+
+Step 4: Write automated integration tests asserting 401 for every
+        authenticated route when called without a token. Run in CI to
+        prevent regression on future deployments.
+
+==============================================================
+NOTE: This finding was identified during a read-only assessment.
+No data was modified, exfiltrated, or shared outside this report.
+Please treat this communication as confidential.
+==============================================================
+
+Regards,
+CrazyCoder
+Security Analyst — Cybersecurity Internship, Task 3
+Shambhunath Institute of Engineering & Technology

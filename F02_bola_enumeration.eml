@@ -1,0 +1,104 @@
+From: crazycoder.security@gmail.com
+To: dev-team@yourcompany.com
+CC: security-lead@yourcompany.com
+Subject: [SECURITY FINDING F-02] HIGH — Broken Object Level Authorization (BOLA) | JSONPlaceholder API
+Date: Mon, 27 Apr 2026 10:15:00 +0530
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+==============================================================
+  SECURITY FINDING NOTIFICATION  |  F-02  |  HIGH
+==============================================================
+
+Finding ID    : F-02
+Severity      : HIGH
+OWASP Ref     : API1:2023 — Broken Object Level Authorization (BOLA)
+API Tested    : JSONPlaceholder (https://jsonplaceholder.typicode.com)
+Endpoint      : GET /users/{id}
+Date Discovered: Mon, 27 Apr 2026
+Analyst       : CrazyCoder
+
+--------------------------------------------------------------
+DESCRIPTION
+--------------------------------------------------------------
+
+The /users/{id} endpoint accepts any integer as the resource identifier and
+returns the corresponding user record without verifying whether the requesting
+client is authorized to access that specific object.
+
+By incrementing the numeric ID in the URL — /users/1, /users/2, /users/3 —
+an attacker can enumerate and retrieve every user's record. This is BOLA,
+the number-one vulnerability in the OWASP API Security Top 10.
+
+--------------------------------------------------------------
+PROOF OF CONCEPT  (Evidence)
+--------------------------------------------------------------
+
+REQUEST 1:
+  GET https://jsonplaceholder.typicode.com/users/1
+  Headers: (none)
+  Response: 200 OK — { "id":1, "name":"Leanne Graham", "email":"Sincere@april.biz" }
+
+REQUEST 2:
+  GET https://jsonplaceholder.typicode.com/users/2
+  Headers: (none)
+  Response: 200 OK — { "id":2, "name":"Ervin Howell", "email":"Shanna@melissa.tv" }
+
+REQUEST 3:
+  GET https://jsonplaceholder.typicode.com/users/3
+  Headers: (none)
+  Response: 200 OK — { "id":3, "name":"Clementine Bauch", "email":"Nathan@yesenia.net" }
+
+OBSERVATION: All three requests returned different users' data with no
+authorization check between them. Sequential integer IDs make full
+enumeration scriptable in seconds with a simple for-loop.
+
+EXPECTED: HTTP 403 Forbidden (when accessing another user's resource)
+ACTUAL:   HTTP 200 OK for every ID — HIGH FINDING
+
+--------------------------------------------------------------
+BUSINESS IMPACT
+--------------------------------------------------------------
+
+1. Any authenticated user can access every other user's profile by changing
+   a single number in the URL — bypassing all account privacy boundaries.
+
+2. In a banking or healthcare API this pattern exposes account balances,
+   medical records, or sensitive personal data across all customers.
+
+3. The sequential integer IDs make full enumeration trivial — a for-loop
+   from 1 to N retrieves the entire user database in minutes.
+
+4. BOLA attacks are nearly invisible in logs — requests look identical to
+   legitimate traffic. Breaches are often discovered only after exfiltration.
+
+--------------------------------------------------------------
+REMEDIATION  (Priority: IMMEDIATE)
+--------------------------------------------------------------
+
+Step 1: Add object-level authorization in every endpoint handler. Before
+        returning data, verify the authenticated user's ID matches the
+        requested resource's owner ID:
+        if (token.user_id != resource.owner_id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+Step 2: Replace sequential integer IDs with UUID v4 identifiers.
+        Example: 550e8400-e29b-41d4-a716-446655440000
+        A 128-bit random UUID cannot be guessed or enumerated.
+
+Step 3: Apply authorization as centralized middleware — not per-endpoint —
+        so new routes inherit protection by default.
+
+Step 4: Implement anomaly detection: alert when a single IP accesses
+        50+ distinct user IDs within 60 seconds.
+
+==============================================================
+NOTE: This finding was identified during a read-only assessment.
+No data was modified, exfiltrated, or shared outside this report.
+Please treat this communication as confidential.
+==============================================================
+
+Regards,
+CrazyCoder
+Security Analyst — Cybersecurity Internship, Task 3
+Shambhunath Institute of Engineering & Technology

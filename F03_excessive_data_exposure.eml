@@ -1,0 +1,119 @@
+From: crazycoder.security@gmail.com
+To: dev-team@yourcompany.com
+CC: security-lead@yourcompany.com
+Subject: [SECURITY FINDING F-03] HIGH — Excessive Data Exposure in API Responses | JSONPlaceholder API
+Date: Mon, 27 Apr 2026 10:30:00 +0530
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+==============================================================
+  SECURITY FINDING NOTIFICATION  |  F-03  |  HIGH
+==============================================================
+
+Finding ID    : F-03
+Severity      : HIGH
+OWASP Ref     : API3:2023 — Broken Object Property Level Authorization
+API Tested    : JSONPlaceholder (https://jsonplaceholder.typicode.com)
+Endpoint      : GET /users/1
+Date Discovered: Mon, 27 Apr 2026
+Analyst       : CrazyCoder
+
+--------------------------------------------------------------
+DESCRIPTION
+--------------------------------------------------------------
+
+The single-user endpoint returns significantly more data fields than any
+typical API consumer requires. While a mobile app displaying a user profile
+needs only the user's name and email, the response additionally includes
+geo-coordinates, full physical address, personal website URL, and internal
+company metadata. This violates the principle of data minimization.
+
+--------------------------------------------------------------
+PROOF OF CONCEPT  (Evidence)
+--------------------------------------------------------------
+
+REQUEST:
+  GET https://jsonplaceholder.typicode.com/users/1
+  Response: 200 OK
+
+FULL RESPONSE BODY (annotated):
+  {
+    "id": 1,                                  -- needed (user identity)
+    "name": "Leanne Graham",                  -- needed (display name)
+    "username": "Bret",                       -- needed (login identifier)
+    "email": "Sincere@april.biz",             -- needed (contact)
+    "address": {
+      "street": "Kulas Light",                -- OVER-EXPOSED: physical address
+      "suite": "Apt. 556",                    -- OVER-EXPOSED: physical address
+      "city": "Gwenborough",                  -- OVER-EXPOSED: physical address
+      "zipcode": "92998-3874",                -- OVER-EXPOSED: physical address
+      "geo": {
+        "lat": "-37.3159",                    -- OVER-EXPOSED: precise GPS lat
+        "lng": "81.1496"                      -- OVER-EXPOSED: precise GPS lng
+      }
+    },
+    "phone": "1-770-736-8031 x56442",         -- OVER-EXPOSED: personal phone
+    "website": "hildegard.org",               -- OVER-EXPOSED: personal website
+    "company": {
+      "name": "Romaguera-Crowe",              -- situational need
+      "catchPhrase": "Multi-layered neural-net", -- OVER-EXPOSED: internal meta
+      "bs": "harness real-time e-markets"     -- OVER-EXPOSED: internal meta
+    }
+  }
+
+OVER-EXPOSED FIELDS IDENTIFIED: 7 (geo.lat, geo.lng, address fields x4,
+company.catchPhrase, company.bs, website)
+
+--------------------------------------------------------------
+BUSINESS IMPACT
+--------------------------------------------------------------
+
+1. Precise geo-coordinates (lat/lng) can reveal a user's home or workplace
+   location — a direct personal safety risk for domestic abuse survivors,
+   whistleblowers, and anyone avoiding a hostile party.
+
+2. Over-exposed fields multiply the damage of any other vulnerability.
+   Combined with F-01 (unauthenticated access), all geo-coordinates for all
+   users are publicly available to anyone on the internet.
+
+3. Internal metadata fields (catchPhrase, bs) may reveal system architecture
+   or business categorization logic useful to attackers planning targeted
+   social engineering attacks.
+
+4. Returning PII fields with no stated consumer purpose may constitute a
+   violation of India's DPDP Act 2023 data minimization requirements.
+
+--------------------------------------------------------------
+REMEDIATION  (Priority: SHORT-TERM — fix within current sprint)
+--------------------------------------------------------------
+
+Step 1: Define a separate UserProfileResponse DTO (Data Transfer Object)
+        for the /users/{id} endpoint. Include only the fields that a
+        documented consumer use case requires:
+        class UserProfileResponse(BaseModel):
+            id: int
+            name: str
+            username: str
+            email: str
+
+Step 2: Never return raw database model objects from API endpoints.
+        Always map to a scoped response schema before returning.
+
+Step 3: Conduct a field-level audit of every response schema.
+        For each field, document: "which client use case requires this?"
+        Remove all fields with no active use case.
+
+Step 4: Add API response schema linting to your CI/CD pipeline.
+        Fail the build if a response includes fields in a deny-list
+        (e.g. geo, internal metadata keys like "bs", "catchPhrase").
+
+==============================================================
+NOTE: This finding was identified during a read-only assessment.
+No data was modified, exfiltrated, or shared outside this report.
+Please treat this communication as confidential.
+==============================================================
+
+Regards,
+CrazyCoder
+Security Analyst — Cybersecurity Internship, Task 3
+Shambhunath Institute of Engineering & Technology

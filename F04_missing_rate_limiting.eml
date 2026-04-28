@@ -1,0 +1,115 @@
+From: crazycoder.security@gmail.com
+To: dev-team@yourcompany.com
+CC: security-lead@yourcompany.com
+Subject: [SECURITY FINDING F-04] MEDIUM — Missing Rate Limiting on All Endpoints | JSONPlaceholder & ReqRes
+Date: Mon, 27 Apr 2026 10:45:00 +0530
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+==============================================================
+  SECURITY FINDING NOTIFICATION  |  F-04  |  MEDIUM
+==============================================================
+
+Finding ID    : F-04
+Severity      : MEDIUM
+OWASP Ref     : API4:2023 — Unrestricted Resource Consumption
+APIs Tested   : JSONPlaceholder & ReqRes
+Endpoint      : All endpoints
+Date Discovered: Mon, 27 Apr 2026
+Analyst       : CrazyCoder
+
+--------------------------------------------------------------
+DESCRIPTION
+--------------------------------------------------------------
+
+Five consecutive GET requests were sent to the /users endpoint with a
+200-millisecond pause between each. None of the five responses contained
+any rate-limiting headers. No HTTP 429 Too Many Requests response was
+received.
+
+The absence of rate limiting means there is no server-side control
+preventing automated abuse: data scraping, credential stuffing, or
+a denial-of-service flood.
+
+NOTE: Test was limited to exactly 5 requests at ethical scope. This is an
+observational check — no flooding was performed.
+
+--------------------------------------------------------------
+PROOF OF CONCEPT  (Evidence)
+--------------------------------------------------------------
+
+TEST PROCEDURE:
+  5 sequential GET requests to /users with 200ms delay between each.
+
+REQUEST/RESPONSE LOG:
+  [1] GET /users  -->  200 OK  (time: 0ms)
+  [2] GET /users  -->  200 OK  (time: 200ms)
+  [3] GET /users  -->  200 OK  (time: 400ms)
+  [4] GET /users  -->  200 OK  (time: 600ms)
+  [5] GET /users  -->  200 OK  (time: 800ms)
+
+RESPONSE HEADER AUDIT (all 5 responses):
+  X-RateLimit-Limit       -->  NOT PRESENT
+  X-RateLimit-Remaining   -->  NOT PRESENT
+  Retry-After             -->  NOT PRESENT
+  RateLimit-Limit         -->  NOT PRESENT
+  X-RateLimit-Reset       -->  NOT PRESENT
+
+NO HTTP 429 response received across any of the 5 requests.
+
+EXPECTED: Rate-limit headers present; 429 returned when limit exceeded
+ACTUAL:   Unlimited requests accepted — MEDIUM FINDING
+
+--------------------------------------------------------------
+BUSINESS IMPACT
+--------------------------------------------------------------
+
+1. Data scraping: An automated script can harvest the entire dataset in
+   seconds, bypassing any intended access controls completely.
+
+2. Credential stuffing: Login endpoints without rate limiting can be
+   targeted with millions of username/password pairs from leaked credential
+   databases, leading to account takeovers at scale.
+
+3. Denial of Service: A flood of requests can exhaust server resources and
+   CPU, taking the API offline for all legitimate users.
+
+4. Cost amplification: In cloud deployments (AWS, GCP, Azure), each API
+   call may trigger billable database queries or ML inference. Unthrottled
+   traffic creates unbounded cost exposure.
+
+--------------------------------------------------------------
+REMEDIATION  (Priority: SHORT-TERM — fix within 30 days)
+--------------------------------------------------------------
+
+Step 1: Implement rate limiting at the API gateway or reverse proxy layer.
+        This applies globally without modifying application code.
+        Nginx example:
+        limit_req_zone $binary_remote_addr zone=api:10m rate=100r/m;
+        limit_req zone=api burst=20 nodelay;
+
+Step 2: Apply differentiated limits by endpoint sensitivity:
+        - Authentication endpoints: 10 requests/minute per IP
+        - Public data endpoints:    100 requests/minute per IP
+        - Admin endpoints:          5 requests/minute per IP
+
+Step 3: Return HTTP 429 Too Many Requests with a Retry-After header
+        so well-behaved clients can back off appropriately:
+        HTTP/1.1 429 Too Many Requests
+        Retry-After: 60
+        Content-Type: application/json
+        {"error": "Rate limit exceeded. Please retry after 60 seconds."}
+
+Step 4: Apply both IP-based and token-based limits independently.
+        Neither mechanism alone can be bypassed by the other method.
+
+==============================================================
+NOTE: This finding was identified during a read-only assessment.
+A maximum of 5 requests were sent. No flooding was performed.
+Please treat this communication as confidential.
+==============================================================
+
+Regards,
+CrazyCoder
+Security Analyst — Cybersecurity Internship, Task 3
+Shambhunath Institute of Engineering & Technology
